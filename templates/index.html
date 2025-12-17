@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!-- App Preview Grid Section -->
+<div id="app-preview-section" class="app-previews">
+    <h2>Running Applications</h2>
+    <div id="app-preview-grid" class="preview-grid">
+        <!-- Preview cards will be inserted here dynamically -->
+    </div>
+</div>
+
+<div class="controls">
+    <input type="text" id="search" placeholder="Search processes..." />
+    <select id="sort-by">
+        <option value="pid">PID</option>
+        <option value="app_name">Application</option>
+        <option value="cpu" selected>CPU %</option>
+        <option value="memory">Memory %</option>
+        <option value="category">Category</option>
+    </select>
+    <button id="refresh-btn">Refresh</button>
+    <label>
+        <input type="checkbox" id="auto-refresh" checked>
+        Auto-refresh
+    </label>
+    <label>
+        <input type="checkbox" id="show-all">
+        Show more processes
+    </label>
+</div>
+
+<div class="table-container">
+    <table id="process-table">
+        <thead>
+            <tr>
+                <th data-sort="pid">PID</th>
+                <th data-sort="app_name">Application</th>
+                <th data-sort="description">Description</th>
+                <th>Port(s)</th>
+                <th data-sort="category">Category</th>
+                <th data-sort="cpu">CPU %</th>
+                <th data-sort="memory">Memory %</th>
+                <th data-sort="memory_mb">Memory (MB)</th>
+                <th data-sort="from_terminal">Source</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="process-tbody">
+            <!-- Process rows will be inserted here dynamically -->
+        </tbody>
+    </table>
+</div>
+
+<div id="process-details" class="modal">
+    <div class="modal-content">
+        <span class="close">&times;</span>
+        <h2>Process Details</h2>
+        <div id="details-content"></div>
+    </div>
+</div>
+{% endblock %}
