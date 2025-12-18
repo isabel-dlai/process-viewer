@@ -12,9 +12,6 @@ const previewManager = {
     // Map of card ID -> DOM element (entire card)
     cards: new Map(),
 
-    // Map of preview key -> iframe element
-    iframes: new Map(),
-
     // Track current state to detect changes
     currentGroups: [],
 
@@ -27,45 +24,15 @@ const previewManager = {
         }
     },
 
-    // Get or create an iframe for a specific preview
-    getIframe(previewKey, url) {
-        if (this.iframes.has(previewKey)) {
-            return this.iframes.get(previewKey);
-        }
-
-        // Create new iframe
-        const iframe = document.createElement('iframe');
-        iframe.className = 'app-iframe';
-        iframe.src = url;
-        iframe.sandbox = 'allow-same-origin allow-scripts';
-
-        this.iframes.set(previewKey, iframe);
-        return iframe;
-    },
-
-    // Remove an iframe from the manager
-    removeIframe(previewKey) {
-        this.iframes.delete(previewKey);
-    },
-
-    // Clear all cards and iframes (for complete reset)
+    // Clear all cards (for complete reset)
     clear() {
         this.cards.clear();
-        this.iframes.clear();
         this.currentGroups = [];
     }
 };
 
 // DOM elements
-const processTable = document.getElementById('process-tbody');
-const searchInput = document.getElementById('search');
-const sortSelect = document.getElementById('sort-by');
-const refreshBtn = document.getElementById('refresh-btn');
-const autoRefreshCheckbox = document.getElementById('auto-refresh');
-const showAllCheckbox = document.getElementById('show-all');
-const modal = document.getElementById('process-details');
-const modalContent = document.getElementById('details-content');
-const closeModal = document.querySelector('.close');
+const previewGrid = document.getElementById('app-preview-grid');
 
 // Socket.IO event listeners
 socket.on('connect', () => {
@@ -77,7 +44,6 @@ socket.on('process_update', (data) => {
     processes = data.processes;
     updateSystemInfo(data.system_info);
     renderAppPreviews();
-    renderProcessTable();
 });
 
 // Kill functionality removed for safety
@@ -90,56 +56,13 @@ socket.on('process_update', (data) => {
 //     }
 // });
 
-socket.on('process_details', (data) => {
-    showProcessDetails(data);
-});
+// Process details modal removed
 
-// Event listeners
-searchInput.addEventListener('input', renderProcessTable);
-sortSelect.addEventListener('change', (e) => {
-    sortBy = e.target.value;
-    renderProcessTable();
-});
-refreshBtn.addEventListener('click', requestProcesses);
-autoRefreshCheckbox.addEventListener('change', (e) => {
-    autoRefresh = e.target.checked;
-    if (autoRefresh) {
-        requestProcesses();
-    }
-});
-showAllCheckbox.addEventListener('change', (e) => {
-    requestProcesses();
-});
-
-closeModal.addEventListener('click', () => {
-    modal.style.display = 'none';
-});
-
-window.addEventListener('click', (e) => {
-    if (e.target === modal) {
-        modal.style.display = 'none';
-    }
-});
-
-// Table header click for sorting
-document.querySelectorAll('#process-table th[data-sort]').forEach(th => {
-    th.addEventListener('click', () => {
-        const column = th.dataset.sort;
-        if (sortBy === column) {
-            sortOrder = sortOrder === 'asc' ? 'desc' : 'asc';
-        } else {
-            sortBy = column;
-            sortOrder = 'desc';
-        }
-        sortSelect.value = column;
-        renderProcessTable();
-    });
-});
+// Event listeners removed - no controls needed for preview-only view
 
 // Functions
 function requestProcesses() {
-    const showAll = showAllCheckbox.checked;
-    socket.emit('get_processes', { show_all: showAll });
+    socket.emit('get_processes', { show_all: false });
 }
 
 // Render app preview cards for processes with ports
@@ -160,7 +83,6 @@ function renderAppPreviews() {
         previewSection.classList.add('hidden');
         // Clean up all cards when no apps are running
         previewManager.cards.clear();
-        previewManager.iframes.clear();
         previewGrid.innerHTML = '';
         return;
     } else {
@@ -179,11 +101,6 @@ function renderAppPreviews() {
                 card.remove();
             }
             previewManager.cards.delete(groupId);
-
-            // Clean up associated iframes
-            const iframeKeys = Array.from(previewManager.iframes.keys())
-                .filter(key => key.startsWith(groupId));
-            iframeKeys.forEach(key => previewManager.iframes.delete(key));
         }
     }
 
@@ -641,32 +558,49 @@ function createAppCard(group) {
         info.appendChild(desc);
         header.appendChild(info);
 
-        // Preview - reuse existing iframe if available
+        // Preview - use zoomed-out iframe for thumbnail effect
         const preview = document.createElement('div');
         preview.className = 'app-card-preview';
         preview.setAttribute('data-preview-key', previewKey);
+        preview.style.overflow = 'hidden';
+        preview.style.position = 'relative';
+        preview.style.height = '240px'; // 800 * 0.3
+        preview.style.width = '100%';
+        preview.style.backgroundColor = '#f5f5f5';
 
-        // Get or create iframe through the preview manager
-        const iframe = previewManager.getIframe(previewKey, url);
+        // Create iframe with zoom effect
+        const iframe = document.createElement('iframe');
+        iframe.className = 'app-iframe';
+        iframe.src = url;
+        iframe.sandbox = 'allow-same-origin allow-scripts allow-forms';
 
-        // Check if iframe needs loading indicator
-        if (!iframe.parentNode) {
-            // New iframe - add loading indicator
-            const loading = document.createElement('div');
-            loading.className = 'preview-loading';
-            loading.textContent = 'Loading preview...';
-            preview.appendChild(loading);
+        // Set iframe to full browser size
+        iframe.style.width = '1280px';
+        iframe.style.height = '800px';
+        iframe.style.border = 'none';
+        iframe.style.position = 'absolute';
+        iframe.style.top = '0';
+        iframe.style.left = '0';
 
-            iframe.onload = () => {
-                loading.style.display = 'none';
-            };
+        // Scale down to fit in preview (creates thumbnail effect)
+        const scale = 0.3; // 30% of original size
+        iframe.style.transform = `scale(${scale})`;
+        iframe.style.transformOrigin = 'top left';
 
-            iframe.onerror = () => {
-                preview.innerHTML = '<div class="preview-error">Preview not available</div>';
-            };
-        }
+        // Make it clickable to open in new tab
+        iframe.style.pointerEvents = 'none';
+        const overlay = document.createElement('div');
+        overlay.style.position = 'absolute';
+        overlay.style.top = '0';
+        overlay.style.left = '0';
+        overlay.style.width = '100%';
+        overlay.style.height = '100%';
+        overlay.style.cursor = 'pointer';
+        overlay.style.zIndex = '10';
+        overlay.onclick = () => window.open(url, '_blank');
 
         preview.appendChild(iframe);
+        preview.appendChild(overlay);
 
         // Footer with actions
         const footer = document.createElement('div');
@@ -731,33 +665,49 @@ function createSingleAppElement(app, label, groupId) {
     title.appendChild(portLink);
     info.appendChild(title);
 
-    // Preview - reuse existing iframe if available
+    // Preview - use zoomed-out iframe for thumbnail effect
     const preview = document.createElement('div');
     preview.className = 'app-card-preview';
-    preview.style.height = '300px';
     preview.setAttribute('data-preview-key', previewKey);
+    preview.style.overflow = 'hidden';
+    preview.style.position = 'relative';
+    preview.style.height = '240px'; // 800 * 0.3
+    preview.style.width = '100%';
+    preview.style.backgroundColor = '#f5f5f5';
 
-    // Get or create iframe through the preview manager
-    const iframe = previewManager.getIframe(previewKey, url);
+    // Create iframe with zoom effect
+    const iframe = document.createElement('iframe');
+    iframe.className = 'app-iframe';
+    iframe.src = url;
+    iframe.sandbox = 'allow-same-origin allow-scripts allow-forms';
 
-    // Check if iframe needs loading indicator
-    if (!iframe.parentNode) {
-        // New iframe - add loading indicator
-        const loading = document.createElement('div');
-        loading.className = 'preview-loading';
-        loading.textContent = 'Loading preview...';
-        preview.appendChild(loading);
+    // Set iframe to full browser size
+    iframe.style.width = '1280px';
+    iframe.style.height = '800px';
+    iframe.style.border = 'none';
+    iframe.style.position = 'absolute';
+    iframe.style.top = '0';
+    iframe.style.left = '0';
 
-        iframe.onload = () => {
-            loading.style.display = 'none';
-        };
+    // Scale down to fit in preview (creates thumbnail effect)
+    const scale = 0.3; // 30% of original size
+    iframe.style.transform = `scale(${scale})`;
+    iframe.style.transformOrigin = 'top left';
 
-        iframe.onerror = () => {
-            preview.innerHTML = '<div class="preview-error">Preview not available</div>';
-        };
-    }
+    // Make it clickable to open in new tab
+    iframe.style.pointerEvents = 'none';
+    const overlay = document.createElement('div');
+    overlay.style.position = 'absolute';
+    overlay.style.top = '0';
+    overlay.style.left = '0';
+    overlay.style.width = '100%';
+    overlay.style.height = '100%';
+    overlay.style.cursor = 'pointer';
+    overlay.style.zIndex = '10';
+    overlay.onclick = () => window.open(url, '_blank');
 
     preview.appendChild(iframe);
+    preview.appendChild(overlay);
 
     element.appendChild(info);
     element.appendChild(preview);
@@ -869,195 +819,7 @@ function updateSystemInfo(systemInfo) {
     document.getElementById('memory-usage').textContent = `Memory: ${systemInfo.memory_percent.toFixed(1)}%`;
 }
 
-function renderProcessTable() {
-    const searchTerm = searchInput.value.toLowerCase();
-
-    // Filter processes
-    let filteredProcesses = processes.filter(proc => {
-        return proc.name.toLowerCase().includes(searchTerm) ||
-               proc.app_name.toLowerCase().includes(searchTerm) ||
-               proc.description.toLowerCase().includes(searchTerm) ||
-               proc.category.toLowerCase().includes(searchTerm) ||
-               proc.username.toLowerCase().includes(searchTerm) ||
-               proc.pid.toString().includes(searchTerm);
-    });
-
-    // Sort processes
-    filteredProcesses.sort((a, b) => {
-        let aVal, bVal;
-
-        switch (sortBy) {
-            case 'pid':
-                aVal = a.pid;
-                bVal = b.pid;
-                break;
-            case 'app_name':
-                aVal = a.app_name.toLowerCase();
-                bVal = b.app_name.toLowerCase();
-                break;
-            case 'description':
-                aVal = a.description.toLowerCase();
-                bVal = b.description.toLowerCase();
-                break;
-            case 'category':
-                aVal = a.category.toLowerCase();
-                bVal = b.category.toLowerCase();
-                break;
-            case 'cpu':
-                aVal = a.cpu_percent;
-                bVal = b.cpu_percent;
-                break;
-            case 'memory':
-                aVal = a.memory_percent;
-                bVal = b.memory_percent;
-                break;
-            case 'memory_mb':
-                aVal = a.memory_mb;
-                bVal = b.memory_mb;
-                break;
-            case 'from_terminal':
-                aVal = a.from_terminal ? 1 : 0;
-                bVal = b.from_terminal ? 1 : 0;
-                break;
-            default:
-                aVal = a.cpu_percent;
-                bVal = b.cpu_percent;
-        }
-
-        if (sortOrder === 'asc') {
-            return aVal > bVal ? 1 : -1;
-        } else {
-            return aVal < bVal ? 1 : -1;
-        }
-    });
-
-    // Clear table
-    processTable.innerHTML = '';
-
-    // Render rows
-    filteredProcesses.forEach(proc => {
-        const row = createProcessRow(proc);
-        processTable.appendChild(row);
-    });
-}
-
-function createProcessRow(proc) {
-    const row = document.createElement('tr');
-
-    // Determine CSS classes for styling
-    const cpuClass = proc.cpu_percent > 50 ? 'cpu-high' : proc.cpu_percent > 20 ? 'cpu-medium' : '';
-    const memoryClass = proc.memory_percent > 50 ? 'memory-high' : '';
-    const categoryClass = `category-${proc.category.toLowerCase().replace(/\s+/g, '-')}`;
-    const sourceText = proc.from_terminal ? 'Terminal' : 'System';
-    const sourceClass = proc.from_terminal ? 'from-terminal' : 'from-system';
-
-    // No special highlighting for user processes - keep it clean
-
-    // Create port links (limit to first 2 ports for cleaner display)
-    let portHtml = '';
-    if (proc.listening_ports && proc.listening_ports.length > 0) {
-        // Take only the first port (usually the main web server port)
-        // Additional ports are often internal APIs
-        const displayPorts = proc.listening_ports.slice(0, 1);
-
-        portHtml = displayPorts.map(port => {
-            // Determine protocol based on common patterns
-            let protocol = 'http';
-            if (port === 443 || port === 8443 || port === 3443) {
-                protocol = 'https';
-            }
-
-            return `<a href="${protocol}://localhost:${port}"
-                      target="_blank"
-                      class="port-link"
-                      title="Open in browser"
-                      onclick="event.stopPropagation()">
-                      ${port}
-                    </a>`;
-        }).join(', ');
-
-        // Add indicator if there are more ports
-        if (proc.listening_ports.length > 1) {
-            portHtml += ` <span class="more-ports" title="${proc.listening_ports.slice(1).join(', ')}">+${proc.listening_ports.length - 1}</span>`;
-        }
-    } else {
-        portHtml = '<span class="no-port">-</span>';
-    }
-
-    // Make the application name clickable if it has a port
-    let appNameHtml = escapeHtml(proc.app_name);
-    if (proc.listening_ports && proc.listening_ports.length > 0) {
-        const firstPort = proc.listening_ports[0];
-        const protocol = (firstPort === 443 || firstPort === 8443 || firstPort === 3443) ? 'https' : 'http';
-        appNameHtml = `<a href="${protocol}://localhost:${firstPort}"
-                          target="_blank"
-                          class="app-link"
-                          title="Open ${proc.app_name} in browser">
-                          ${escapeHtml(proc.app_name)}
-                       </a>`;
-    }
-
-    row.innerHTML = `
-        <td>${proc.pid}</td>
-        <td class="app-name">${appNameHtml}</td>
-        <td class="description">${escapeHtml(proc.description)}</td>
-        <td class="ports">${portHtml}</td>
-        <td class="${categoryClass}">${escapeHtml(proc.category)}</td>
-        <td class="${cpuClass}">${proc.cpu_percent.toFixed(1)}%</td>
-        <td class="${memoryClass}">${proc.memory_percent.toFixed(1)}%</td>
-        <td>${proc.memory_mb.toFixed(1)} MB</td>
-        <td class="${sourceClass}">${sourceText}</td>
-        <td class="action-btns">
-            <button class="action-btn btn-details" onclick="getProcessDetails(${proc.pid})">Details</button>
-        </td>
-    `;
-
-    return row;
-}
-
-function getProcessDetails(pid) {
-    socket.emit('get_process_details', { pid: pid });
-}
-
-function showProcessDetails(details) {
-    modalContent.innerHTML = `
-        <p><strong>PID:</strong> ${details.pid}</p>
-        <p><strong>Name:</strong> ${escapeHtml(details.name)}</p>
-        <p><strong>Status:</strong> ${details.status}</p>
-        <p><strong>User:</strong> ${escapeHtml(details.username)}</p>
-        <p><strong>CPU Percent:</strong> ${details.cpu_percent.toFixed(2)}%</p>
-        <p><strong>Memory Percent:</strong> ${details.memory_percent.toFixed(2)}%</p>
-        <p><strong>Memory (RSS):</strong> ${(details.memory_info.rss / 1024 / 1024).toFixed(2)} MB</p>
-        <p><strong>Memory (VMS):</strong> ${(details.memory_info.vms / 1024 / 1024).toFixed(2)} MB</p>
-        <p><strong>Threads:</strong> ${details.num_threads}</p>
-        <p><strong>Created:</strong> ${new Date(details.create_time * 1000).toLocaleString()}</p>
-        ${details.exe ? `<p><strong>Executable:</strong> ${escapeHtml(details.exe)}</p>` : ''}
-        ${details.cmdline && details.cmdline.length > 0 ?
-            `<p><strong>Command Line:</strong> ${escapeHtml(details.cmdline.join(' '))}</p>` : ''}
-        ${details.cwd ? `<p><strong>Working Directory:</strong> ${escapeHtml(details.cwd)}</p>` : ''}
-        ${details.environ ?
-            `<details>
-                <summary><strong>Environment Variables:</strong></summary>
-                <pre>${Object.entries(details.environ).map(([k, v]) =>
-                    `${escapeHtml(k)}=${escapeHtml(v)}`).join('\n')}</pre>
-            </details>` : ''}
-        ${details.connections && details.connections.length > 0 ?
-            `<details>
-                <summary><strong>Network Connections:</strong></summary>
-                <ul>${details.connections.map(conn =>
-                    `<li>${conn.type} - ${conn.laddr} ${conn.status}</li>`).join('')}</ul>
-            </details>` : ''}
-        ${details.open_files && details.open_files.length > 0 ?
-            `<details>
-                <summary><strong>Open Files:</strong></summary>
-                <ul>${details.open_files.slice(0, 20).map(file =>
-                    `<li>${escapeHtml(file.path)}</li>`).join('')}
-                    ${details.open_files.length > 20 ? `<li>... and ${details.open_files.length - 20} more</li>` : ''}
-                </ul>
-            </details>` : ''}
-    `;
-    modal.style.display = 'block';
-}
+// Table rendering functions removed - preview-only view
 
 // Kill functionality removed for safety
 // function killProcess(pid) {
