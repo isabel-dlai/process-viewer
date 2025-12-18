@@ -16,7 +16,7 @@ If you're the kind of developer who has:
 ## Features
 
 ### 🎯 Smart App Detection & Grouping
-- **Live Previews**: See your running apps with live iframe previews right in the dashboard
+- **Zoomed-Out Previews**: See thumbnail previews of your running apps showing the full layout (scaled to 30%)
 - **Intelligent Pairing**: Automatically detects and groups frontend/backend pairs (e.g., `/drawing-tutor/frontend` + `/drawing-tutor/backend`)
 - **Related Process Bundling**: Groups package managers, build tools, workers, and virtual environments under their parent app
 - **Focus on What Matters**: Filters out IDE noise (VS Code, Git) to show only your actual running applications
@@ -35,10 +35,11 @@ If you're the kind of developer who has:
 - **Static Servers**: Any HTTP server on common dev ports
 
 ### 🎨 Clean, Organized UI
-- **Preview Cards**: Frontend apps displayed prominently with live previews
+- **Preview Cards**: Frontend apps displayed prominently with zoomed-out iframe previews
 - **Bundled Processes**: Supporting processes (backends, bundlers, package managers) organized underneath
-- **No Iframe Refreshing**: Sophisticated DOM reconciliation keeps your previews stable
+- **Clickable Previews**: Click any preview to open the full app in your browser
 - **System Monitoring**: CPU and memory usage at a glance
+- **Minimal Interface**: Preview-only view with no clutter - just your apps
 
 ## Installation
 
@@ -99,9 +100,10 @@ Automatically detects and bundles:
 
 - **Backend**: Flask + Socket.IO for real-time communication
 - **Process Intelligence**: Custom categorization engine (580 LOC) for smart app detection
-- **Frontend**: Vanilla JavaScript with DOM reconciliation pattern to prevent iframe refreshing
+- **Frontend**: Vanilla JavaScript with DOM reconciliation and CSS transform-based iframe scaling
 - **Monitoring**: psutil for cross-platform process information
 - **Updates**: WebSocket emits 'process_update' events every 2 seconds
+- **UI**: Preview-only interface showing app thumbnails (1280x800 iframes scaled to 30%)
 
 ### Key Files
 - `app.py`: Flask server with Socket.IO handlers

@@ -29,9 +29,10 @@ pkill -f "python app.py"
 - **process_monitor.py**: Queries system processes using psutil, focuses on development-related processes.
 
 ### Frontend Architecture
-- **static/js/app.js**: Implements DOM reconciliation pattern with `previewManager` object to prevent iframe refreshing
+- **static/js/app.js**: Implements DOM reconciliation pattern with `previewManager` object
 - **templates/**: Jinja2 templates with base.html and index.html
 - Uses WebSocket for real-time updates, no REST API endpoints
+- **Preview-only UI**: Shows only app preview cards, no process table or controls
 
 ### App Preview Grouping Logic
 
@@ -54,8 +55,9 @@ The app intelligently groups related processes to provide a clean, organized vie
 #### Display Structure
 
 **Single App Card:**
-- Shows live iframe preview of the app (frontend only)
+- Shows zoomed-out iframe preview of the app (1280x800 scaled to 30%)
 - Port badge to open in browser
+- Clickable preview overlay to open app in new tab
 - Bundled processes section below showing:
   - Backend Server (with clickable port link)
   - Backend Instances (multiple workers)
@@ -64,19 +66,16 @@ The app intelligently groups related processes to provide a clean, organized vie
   - Virtual Environments
   - Auto-restart tools (Nodemon)
 
-**Result:** Frontends are the primary focus with quick preview access, while backends and supporting processes are neatly organized underneath.
+**Result:** Frontends are the primary focus with thumbnail preview access, while backends and supporting processes are neatly organized underneath.
 
 ### Critical Implementation Details
 
-#### Iframe Persistence (app.js:10-57)
-The app uses a sophisticated reconciliation algorithm to preserve iframe state:
-```javascript
-const previewManager = {
-    cards: new Map(),    // Stores DOM elements by groupId
-    iframes: new Map()   // Stores iframe elements by previewKey
-}
-```
-Never use `innerHTML = ''` on the preview grid - this destroys iframes and causes refreshing.
+#### Iframe Previews
+- Iframes are set to 1280x800px (standard desktop size) and scaled to 30% using CSS transforms
+- Creates a thumbnail effect showing the full app layout
+- Iframes have `pointer-events: none` with clickable overlay on top to open in new tab
+- Each preview is 240px tall (800 * 0.3) to properly contain the scaled iframe
+- Uses `transform-origin: top left` to ensure scaling happens from top-left corner
 
 #### Port Detection (Lines 84-109 in process_identifier.py)
 Ports are filtered to web-friendly ranges:
@@ -119,10 +118,11 @@ Each main process includes a `related_processes` array with:
 - Verify process has 'streamlit' in command line for proper detection (lines 338-349)
 - Ensure port range includes your app (e.g., 8500-8510 for Streamlit)
 
-### Iframe Refreshing Issues
-- Problem occurs when `previewGrid.innerHTML = ''` is used
-- Solution: Use reconciliation in `renderAppPreviews()` function
-- Cards are updated via `updateAppCard()` without touching iframes
+### Apps Not Showing Up
+- Check browser console for JavaScript errors
+- Verify processes have ports in the allowed ranges
+- Ensure `renderAppPreviews()` function is being called
+- Check that previewManager reconciliation logic is working
 
 ### Process Not Detected
 - Check `get_user_processes()` filtering logic
@@ -132,25 +132,21 @@ Each main process includes a `related_processes` array with:
 ## WebSocket Events
 
 ### Client → Server
-- `get_processes`: Request process list (with `show_all` flag)
-- `get_process_details`: Get detailed info for specific PID
+- `get_processes`: Request process list
 
 ### Server → Client
 - `process_update`: Emitted every 2 seconds with `{processes: [], system_info: {}}`
-- `process_details`: Response to details request
 
 ## Frontend State Management
 
-The frontend maintains several Maps for efficient updates:
-- `previewManager.cards`: DOM elements for preview cards
-- `previewManager.iframes`: Iframe elements (never recreated)
+The frontend maintains simple state for efficient updates:
+- `previewManager.cards`: DOM elements for preview cards (Map by groupId)
 - `processes`: Array of current process data
 
 Updates follow this flow:
-1. Socket.IO emits 'process_update'
+1. Socket.IO emits 'process_update' every 2 seconds
 2. `renderAppPreviews()` reconciles DOM changes
-3. `renderProcessTable()` updates the table
-4. Iframes persist through all updates
+3. Cards are added/updated/removed based on running processes
 
 ## Important Constraints
 
