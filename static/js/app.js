@@ -34,9 +34,17 @@ const previewManager = {
 // DOM elements
 const previewGrid = document.getElementById('app-preview-grid');
 
+// Terminal-style console logging
+function terminalLog(message, type = 'info') {
+    const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
+    const prefix = type === 'error' ? '[ERR]' : type === 'warn' ? '[WRN]' : '[SYS]';
+    console.log(`%c${timestamp} ${prefix} ${message}`, `color: ${type === 'error' ? '#ff0055' : type === 'warn' ? '#ffff00' : '#00ff41'}; font-family: monospace;`);
+}
+
 // Socket.IO event listeners
 socket.on('connect', () => {
-    console.log('Connected to server');
+    terminalLog('WEBSOCKET CONNECTION ESTABLISHED');
+    terminalLog('INITIATING PROCESS SCAN...', 'info');
     requestProcesses();
 });
 
@@ -44,6 +52,12 @@ socket.on('process_update', (data) => {
     processes = data.processes;
     updateSystemInfo(data.system_info);
     renderAppPreviews();
+
+    // Log process count updates
+    const activeApps = processes.filter(p => p.listening_ports && p.listening_ports.length > 0).length;
+    if (activeApps > 0) {
+        terminalLog(`DETECTED ${activeApps} ACTIVE PROCESS${activeApps > 1 ? 'ES' : ''} WITH PORTS`);
+    }
 });
 
 // Kill functionality removed for safety
@@ -815,8 +829,32 @@ function createRelatedProcessesSection(relatedProcesses) {
 }
 
 function updateSystemInfo(systemInfo) {
-    document.getElementById('cpu-usage').textContent = `CPU: ${systemInfo.cpu_percent.toFixed(1)}%`;
-    document.getElementById('memory-usage').textContent = `Memory: ${systemInfo.memory_percent.toFixed(1)}%`;
+    const cpuValue = systemInfo.cpu_percent.toFixed(1);
+    const memValue = systemInfo.memory_percent.toFixed(1);
+
+    // Update with terminal-style formatting
+    document.getElementById('cpu-usage').innerHTML = `CPU: <span class="metric">${cpuValue}</span>%`;
+    document.getElementById('memory-usage').innerHTML = `MEM: <span class="metric">${memValue}</span>%`;
+
+    // Add warning color if CPU/MEM is high
+    const cpuElement = document.getElementById('cpu-usage');
+    const memElement = document.getElementById('memory-usage');
+
+    if (parseFloat(cpuValue) > 80) {
+        cpuElement.style.color = 'var(--terminal-red)';
+    } else if (parseFloat(cpuValue) > 50) {
+        cpuElement.style.color = 'var(--terminal-yellow)';
+    } else {
+        cpuElement.style.color = 'var(--terminal-text-dim)';
+    }
+
+    if (parseFloat(memValue) > 80) {
+        memElement.style.color = 'var(--terminal-red)';
+    } else if (parseFloat(memValue) > 50) {
+        memElement.style.color = 'var(--terminal-yellow)';
+    } else {
+        memElement.style.color = 'var(--terminal-text-dim)';
+    }
 }
 
 // Table rendering functions removed - preview-only view
@@ -843,6 +881,25 @@ setInterval(() => {
         requestProcesses();
     }
 }, 2000);
+
+// Terminal boot sequence
+function bootSequence() {
+    terminalLog('PROCESS_VIEWER.EXE v2.1.0 - INITIALIZING...', 'info');
+    terminalLog('LOADING SYSTEM MODULES...', 'info');
+
+    setTimeout(() => {
+        terminalLog('ESTABLISHING WEBSOCKET CONNECTION...', 'info');
+    }, 300);
+
+    setTimeout(() => {
+        terminalLog('SYSTEM READY - MONITORING ACTIVE', 'info');
+    }, 600);
+}
+
+// Run boot sequence on page load
+document.addEventListener('DOMContentLoaded', () => {
+    bootSequence();
+});
 
 // Initial load
 requestProcesses();

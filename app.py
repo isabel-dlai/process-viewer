@@ -99,8 +99,10 @@ def handle_get_processes(data=None):
             # Default to showing only user-initiated processes
             processes = identifier.get_user_processes()
 
+        # Performance: Use interval=None for non-blocking CPU check
+        # This returns the average CPU usage since last call, not blocking
         system_info = {
-            'cpu_percent': psutil.cpu_percent(interval=0.1),
+            'cpu_percent': psutil.cpu_percent(interval=None),
             'memory_percent': psutil.virtual_memory().percent
         }
         emit('process_update', {
@@ -183,4 +185,8 @@ def handle_get_process_details(data):
 if __name__ == '__main__':
     print("Starting Process Viewer on http://localhost:5555")
     print("Open your browser to view running processes")
+
+    # Initialize CPU monitoring for non-blocking calls
+    psutil.cpu_percent(interval=None)
+
     socketio.run(app, debug=True, port=5555, allow_unsafe_werkzeug=True)

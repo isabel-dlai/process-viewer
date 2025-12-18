@@ -3,24 +3,46 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Process Viewer{% endblock %}</title>
+    <title>{% block title %}PROCESS_VIEWER.EXE{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=VT323&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 </head>
 <body>
+    <div class="crt-overlay"></div>
+    <div class="scanlines"></div>
+
     <nav class="navbar">
         <div class="container">
-            <h1>Process Viewer</h1>
+            <div class="terminal-header">
+                <span class="ascii-bracket">[</span>
+                <h1><span class="glitch" data-text="PROCESS_VIEWER.EXE">PROCESS_VIEWER.EXE</span></h1>
+                <span class="ascii-bracket">]</span>
+                <span class="blink-cursor">_</span>
+            </div>
             <div class="system-info">
-                <span id="cpu-usage">CPU: --%</span>
-                <span id="memory-usage">Memory: --%</span>
+                <span class="stat-label">SYS:</span>
+                <span id="cpu-usage" class="stat-value">CPU: <span class="metric">--</span>%</span>
+                <span class="separator">|</span>
+                <span id="memory-usage" class="stat-value">MEM: <span class="metric">--</span>%</span>
+                <span class="status-indicator"></span>
             </div>
         </div>
     </nav>
 
     <main class="container">
-        {% block content %}{% endblock %}
+        <div class="terminal-content">
+            {% block content %}{% endblock %}
+        </div>
     </main>
+
+    <footer class="terminal-footer">
+        <div class="container">
+            <span class="footer-text">// MONITORING ACTIVE // PID_SCANNER v2.1.0 //</span>
+        </div>
+    </footer>
 
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>

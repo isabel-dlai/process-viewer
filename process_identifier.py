@@ -4,6 +4,7 @@ Enhanced process identification and categorization
 import psutil
 import os
 import re
+import time
 from typing import Dict, List, Any, Optional
 from pathlib import Path
 
@@ -11,7 +12,11 @@ from pathlib import Path
 class ProcessIdentifier:
     """Identify and describe processes in a user-friendly way"""
 
-    def __init__(self):
+    def __init__(self, cache_duration=5.0):
+        # Performance: Cache process list to avoid scanning all processes every request
+        self.cache_duration = cache_duration  # seconds
+        self._cached_processes = None
+        self._cache_timestamp = 0
         # Common terminal emulators and shells
         self.terminals = {
             'terminal', 'iterm2', 'iterm', 'alacritty', 'kitty', 'wezterm',
@@ -57,66 +62,77 @@ class ProcessIdentifier:
             'emacs': 'Emacs Text Editor',
         }
 
-    def identify_process(self, proc: psutil.Process) -> Dict[str, Any]:
-        """Get enhanced information about a process"""
+    def identify_process(self, proc: psutil.Process, check_ports=True) -> Dict[str, Any]:
+        """Get enhanced information about a process
+
+        Args:
+            proc: Process to identify
+            check_ports: If False, skip expensive port scanning (default: True)
+        """
         try:
-            base_info = {
-                'pid': proc.pid,
-                'name': proc.name(),
-                'cpu_percent': proc.cpu_percent(),
-                'memory_percent': proc.memory_percent(),
-                'memory_mb': proc.memory_info().rss / 1024 / 1024,
-                'status': proc.status(),
-                'username': proc.username(),
-                'num_threads': proc.num_threads(),
-                'create_time': proc.create_time()
-            }
+            # Use oneshot() context manager for better performance
+            with proc.oneshot():
+                base_info = {
+                    'pid': proc.pid,
+                    'name': proc.name(),
+                    'cpu_percent': proc.cpu_percent(),
+                    'memory_percent': proc.memory_percent(),
+                    'memory_mb': proc.memory_info().rss / 1024 / 1024,
+                    'status': proc.status(),
+                    'username': proc.username(),
+                    'num_threads': proc.num_threads(),
+                    'create_time': proc.create_time()
+                }
 
-            # Get listening ports for this process
-            try:
-                connections = proc.connections(kind='inet')
-                listening_ports = []
-                for conn in connections:
-                    if conn.status == 'LISTEN':
-                        port = conn.laddr.port
-                        # Filter to only common web/app ports, exclude internal API ports
-                        # Common web development port ranges
-                        common_web_ports = [
-                            80, 443,  # Standard HTTP/HTTPS
-                            3000, 3001, 3002, 3003, 3004, 3005,  # React/Node common ports
-                            4000, 4001, 4200,  # Angular, Phoenix
-                            5000, 5001, 5173, 5174, 5555, 5556,  # Flask, Vite, custom
-                            8000, 8001, 8080, 8081, 8888,  # Django, general web
-                            8501, 8502, 8503,  # Streamlit
-                            9000, 9001, 9090,  # Various frameworks
-                            7860, 7861,  # Gradio
-                        ]
+            # Get listening ports for this process (can be expensive - make it optional)
+            if check_ports:
+                try:
+                    connections = proc.connections(kind='inet')
+                    listening_ports = []
+                    for conn in connections:
+                        if conn.status == 'LISTEN':
+                            port = conn.laddr.port
+                            # Filter to only common web/app ports, exclude internal API ports
+                            # Common web development port ranges
+                            common_web_ports = [
+                                80, 443,  # Standard HTTP/HTTPS
+                                3000, 3001, 3002, 3003, 3004, 3005,  # React/Node common ports
+                                4000, 4001, 4200,  # Angular, Phoenix
+                                5000, 5001, 5173, 5174, 5555, 5556,  # Flask, Vite, custom
+                                8000, 8001, 8080, 8081, 8888,  # Django, general web
+                                8501, 8502, 8503,  # Streamlit
+                                9000, 9001, 9090,  # Various frameworks
+                                7860, 7861,  # Gradio
+                            ]
 
-                        # Include if it's a known web port or in common ranges
-                        if port in common_web_ports:
-                            listening_ports.append(port)
-                        # Also include ports in these ranges that are likely web servers
-                        elif (3000 <= port <= 3010) or (4000 <= port <= 4010) or \
-                             (5000 <= port <= 5010) or (7860 <= port <= 7870) or \
-                             (8000 <= port <= 8100) or (8500 <= port <= 8510) or \
-                             (9000 <= port <= 9100):
-                            # But exclude known internal/API ports that aren't meant for browser access
-                            exclude_ports = {
-                                # Common internal API ports that tools use
-                                49152, 49153, 49154, 49155, 49156, 49157, 49158, 49159,  # Dynamic/private ports
-                                49546, 49547, 49548, 49549, 49550, 49551, 49552,  # More dynamic ports
-                                49571, 49566, 49565, 49562,  # VS Code internal ports
-                                # Add more as needed
-                            }
-                            if port not in exclude_ports and not (49000 <= port <= 65535):  # Exclude ephemeral port range
+                            # Include if it's a known web port or in common ranges
+                            if port in common_web_ports:
                                 listening_ports.append(port)
+                            # Also include ports in these ranges that are likely web servers
+                            elif (3000 <= port <= 3010) or (4000 <= port <= 4010) or \
+                                 (5000 <= port <= 5010) or (7860 <= port <= 7870) or \
+                                 (8000 <= port <= 8100) or (8500 <= port <= 8510) or \
+                                 (9000 <= port <= 9100):
+                                # But exclude known internal/API ports that aren't meant for browser access
+                                exclude_ports = {
+                                    # Common internal API ports that tools use
+                                    49152, 49153, 49154, 49155, 49156, 49157, 49158, 49159,  # Dynamic/private ports
+                                    49546, 49547, 49548, 49549, 49550, 49551, 49552,  # More dynamic ports
+                                    49571, 49566, 49565, 49562,  # VS Code internal ports
+                                    # Add more as needed
+                                }
+                                if port not in exclude_ports and not (49000 <= port <= 65535):  # Exclude ephemeral port range
+                                    listening_ports.append(port)
 
-                # For the chat-explorer case, prioritize lower port numbers (usually the main server)
-                listening_ports = list(set(listening_ports))  # Remove duplicates
-                listening_ports.sort()  # Sort so main ports appear first
+                    # For the chat-explorer case, prioritize lower port numbers (usually the main server)
+                    listening_ports = list(set(listening_ports))  # Remove duplicates
+                    listening_ports.sort()  # Sort so main ports appear first
 
-                base_info['listening_ports'] = listening_ports
-            except (psutil.AccessDenied, psutil.NoSuchProcess):
+                    base_info['listening_ports'] = listening_ports
+                except (psutil.AccessDenied, psutil.NoSuchProcess):
+                    base_info['listening_ports'] = []
+            else:
+                # If skipping port check, set empty list
                 base_info['listening_ports'] = []
 
             # Get command line for better identification
@@ -595,15 +611,56 @@ class ProcessIdentifier:
         return related
 
     def get_user_processes(self) -> List[Dict[str, Any]]:
-        """Get all processes that are likely user-initiated, excluding system processes"""
+        """Get all processes that are likely user-initiated, excluding system processes
+
+        Uses caching to avoid expensive scans on every request.
+        """
+        # Check cache first
+        current_time = time.time()
+        if self._cached_processes is not None and (current_time - self._cache_timestamp) < self.cache_duration:
+            return self._cached_processes
+
         processes = []
 
-        # First pass: collect all process objects for relationship detection
-        all_procs = list(psutil.process_iter())
+        # Performance: Quick filter of process names before expensive operations
+        # This reduces the number of identify_process() calls significantly
+        excluded_names = {'code', 'git', 'vim', 'nvim', 'emacs', 'sublime', 'atom',
+                         'code-helper', 'chrome', 'firefox', 'safari', 'slack', 'spotify',
+                         'finder', 'dock', 'systemuiserver', 'windowserver'}
 
-        for proc in all_procs:
+        # First pass: Quick filter and collect candidate processes
+        candidate_procs = []
+        for proc in psutil.process_iter(['pid', 'name']):
             try:
-                info = self.identify_process(proc)
+                proc_name_lower = proc.info['name'].lower() if proc.info['name'] else ''
+
+                # Skip obviously excluded processes early
+                if any(excluded in proc_name_lower for excluded in excluded_names):
+                    continue
+
+                # Skip system processes (most start with these paths)
+                try:
+                    exe = proc.exe()
+                    if exe and ('/System/' in exe or '/usr/libexec/' in exe or '/usr/sbin/' in exe):
+                        continue
+                except:
+                    pass
+
+                candidate_procs.append(proc)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+
+        # Second pass: Identify only candidate processes
+        for proc in candidate_procs:
+            try:
+                # Only check ports for processes that might be servers
+                # This is a huge performance win
+                proc_name = proc.name().lower() if hasattr(proc, 'name') else ''
+                might_have_ports = any(keyword in proc_name for keyword in
+                                      ['python', 'node', 'npm', 'flask', 'django', 'uvicorn',
+                                       'gunicorn', 'streamlit', 'gradio', 'vite', 'webpack'])
+
+                info = self.identify_process(proc, check_ports=might_have_ports)
                 if info:
                     # Filter out system processes and unwanted categories
                     if info['category'] in ['System', 'User Process', 'Development IDE']:
@@ -623,11 +680,15 @@ class ProcessIdentifier:
                         continue
 
                     # Find related/bundled processes
-                    info['related_processes'] = self._find_related_processes(info, all_procs)
+                    info['related_processes'] = self._find_related_processes(info, candidate_procs)
 
                     processes.append(info)
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
+
+        # Update cache
+        self._cached_processes = processes
+        self._cache_timestamp = current_time
 
         return processes
 
