@@ -572,34 +572,36 @@ function createAppCard(group) {
         info.appendChild(desc);
         header.appendChild(info);
 
-        // Preview - use zoomed-out iframe for thumbnail effect
+        // Preview - iframe scaled to fill width
         const preview = document.createElement('div');
         preview.className = 'app-card-preview';
         preview.setAttribute('data-preview-key', previewKey);
         preview.style.overflow = 'hidden';
         preview.style.position = 'relative';
-        preview.style.height = '240px'; // 800 * 0.3
+        preview.style.height = '300px';
         preview.style.width = '100%';
-        preview.style.backgroundColor = '#f5f5f5';
+        preview.style.backgroundColor = '#000';
 
-        // Create iframe with zoom effect
+        // Create iframe - scale to fill container width
         const iframe = document.createElement('iframe');
         iframe.className = 'app-iframe';
         iframe.src = url;
         iframe.sandbox = 'allow-same-origin allow-scripts allow-forms';
 
-        // Set iframe to full browser size
+        // Set iframe to desktop size, then scale to fit width
         iframe.style.width = '1280px';
         iframe.style.height = '800px';
         iframe.style.border = 'none';
         iframe.style.position = 'absolute';
-        iframe.style.top = '0';
-        iframe.style.left = '0';
+        iframe.style.top = '50%';
+        iframe.style.left = '50%';
 
-        // Scale down to fit in preview (creates thumbnail effect)
-        const scale = 0.3; // 30% of original size
-        iframe.style.transform = `scale(${scale})`;
-        iframe.style.transformOrigin = 'top left';
+        // Scale to fill container width (height will overflow and be cropped)
+        // Container is typically 450-500px wide
+        // Scale = container width / 1280
+        // Use CSS to scale: transform with calc
+        iframe.style.transform = 'translate(-50%, -50%) scale(0.38)'; // ~480px / 1280px
+        iframe.style.transformOrigin = 'center center';
 
         // Make it clickable to open in new tab
         iframe.style.pointerEvents = 'none';
@@ -679,34 +681,33 @@ function createSingleAppElement(app, label, groupId) {
     title.appendChild(portLink);
     info.appendChild(title);
 
-    // Preview - use zoomed-out iframe for thumbnail effect
+    // Preview - iframe scaled to fill width
     const preview = document.createElement('div');
     preview.className = 'app-card-preview';
     preview.setAttribute('data-preview-key', previewKey);
     preview.style.overflow = 'hidden';
     preview.style.position = 'relative';
-    preview.style.height = '240px'; // 800 * 0.3
+    preview.style.height = '300px';
     preview.style.width = '100%';
-    preview.style.backgroundColor = '#f5f5f5';
+    preview.style.backgroundColor = '#000';
 
-    // Create iframe with zoom effect
+    // Create iframe - scale to fill container width
     const iframe = document.createElement('iframe');
     iframe.className = 'app-iframe';
     iframe.src = url;
     iframe.sandbox = 'allow-same-origin allow-scripts allow-forms';
 
-    // Set iframe to full browser size
+    // Set iframe to desktop size, then scale to fit width
     iframe.style.width = '1280px';
     iframe.style.height = '800px';
     iframe.style.border = 'none';
     iframe.style.position = 'absolute';
-    iframe.style.top = '0';
-    iframe.style.left = '0';
+    iframe.style.top = '50%';
+    iframe.style.left = '50%';
 
-    // Scale down to fit in preview (creates thumbnail effect)
-    const scale = 0.3; // 30% of original size
-    iframe.style.transform = `scale(${scale})`;
-    iframe.style.transformOrigin = 'top left';
+    // Scale to fill container width (height will overflow and be cropped)
+    iframe.style.transform = 'translate(-50%, -50%) scale(0.38)'; // ~480px / 1280px
+    iframe.style.transformOrigin = 'center center';
 
     // Make it clickable to open in new tab
     iframe.style.pointerEvents = 'none';
