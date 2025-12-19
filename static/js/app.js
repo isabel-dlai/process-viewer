@@ -746,3 +746,70 @@ socket.on('process_group_killed', (data) => {
         );
     }
 });
+
+// ================================================
+// THEME SWITCHING
+// ================================================
+
+const themeConfig = {
+    hacker: {
+        name: 'Hacker',
+        title: 'PROCESS_VIEWER.EXE',
+        footer: '// MONITORING ACTIVE // PID_SCANNER v2.1.0 //'
+    },
+    clean: {
+        name: 'Clean',
+        title: 'Process Viewer',
+        footer: 'Monitoring your development environment'
+    }
+};
+
+function initTheme() {
+    const themeSwitch = document.getElementById('theme-switch');
+    const themeLabel = document.getElementById('theme-label');
+    const appTitle = document.getElementById('app-title');
+    const footerText = document.getElementById('footer-text');
+
+    if (!themeSwitch) return;
+
+    // Get saved theme or default to hacker
+    const savedTheme = localStorage.getItem('processViewerTheme') || 'hacker';
+    const isClean = savedTheme === 'clean';
+
+    // Set initial state
+    themeSwitch.checked = isClean;
+    applyTheme(isClean ? 'clean' : 'hacker');
+
+    // Listen for toggle changes
+    themeSwitch.addEventListener('change', () => {
+        const newTheme = themeSwitch.checked ? 'clean' : 'hacker';
+        applyTheme(newTheme);
+        localStorage.setItem('processViewerTheme', newTheme);
+        terminalLog(`THEME SWITCHED TO: ${newTheme.toUpperCase()}`, 'info');
+    });
+
+    function applyTheme(theme) {
+        const config = themeConfig[theme];
+
+        // Apply theme to HTML element
+        document.documentElement.setAttribute('data-theme', theme);
+
+        // Update UI text
+        if (themeLabel) themeLabel.textContent = config.name;
+        if (appTitle) {
+            appTitle.textContent = config.title;
+            appTitle.setAttribute('data-text', config.title);
+        }
+        if (footerText) footerText.textContent = config.footer;
+
+        // Update document title
+        document.title = config.title;
+    }
+}
+
+// Initialize theme on DOM ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initTheme);
+} else {
+    initTheme();
+}
