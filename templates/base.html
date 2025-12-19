@@ -6,9 +6,18 @@
     <title>{% block title %}PROCESS_VIEWER.EXE{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=VT323&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=VT323&family=Playfair+Display:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script>
+        // Apply saved theme immediately to prevent flash
+        (function() {
+            const saved = localStorage.getItem('processViewerTheme');
+            if (saved) {
+                document.documentElement.setAttribute('data-theme', saved);
+            }
+        })();
+    </script>
 </head>
 <body>
     <div class="crt-overlay"></div>
@@ -36,7 +45,7 @@
         <div class="container">
             <div class="terminal-header">
                 <span class="ascii-bracket">[</span>
-                <h1><span class="glitch" data-text="PROCESS_VIEWER.EXE">PROCESS_VIEWER.EXE</span></h1>
+                <h1><span class="glitch" data-text="PROCESS_VIEWER.EXE" id="app-title">PROCESS_VIEWER.EXE</span></h1>
                 <span class="ascii-bracket">]</span>
                 <span class="blink-cursor">_</span>
             </div>
@@ -45,6 +54,16 @@
                 <span class="separator">|</span>
                 <span id="memory-usage" class="stat-value">MEM: <span class="metric">--</span>%</span>
                 <span class="status-indicator"></span>
+
+                <div class="theme-toggle-wrapper">
+                    <span class="theme-label" id="theme-label">Hacker</span>
+                    <label class="theme-toggle">
+                        <input type="checkbox" id="theme-switch">
+                        <div class="toggle-track">
+                            <div class="toggle-thumb"></div>
+                        </div>
+                    </label>
+                </div>
             </div>
         </div>
     </nav>
@@ -57,7 +76,7 @@
 
     <footer class="terminal-footer">
         <div class="container">
-            <span class="footer-text">// MONITORING ACTIVE // PID_SCANNER v2.1.0 //</span>
+            <span class="footer-text" id="footer-text">// MONITORING ACTIVE // PID_SCANNER v2.1.0 //</span>
         </div>
     </footer>
 
