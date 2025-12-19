@@ -17,12 +17,6 @@ class ProcessIdentifier:
         self.cache_duration = cache_duration  # seconds
         self._cached_processes = None
         self._cache_timestamp = 0
-        # Common terminal emulators and shells
-        self.terminals = {
-            'terminal', 'iterm2', 'iterm', 'alacritty', 'kitty', 'wezterm',
-            'gnome-terminal', 'konsole', 'xterm', 'tmux', 'screen',
-            'bash', 'zsh', 'fish', 'sh', 'tcsh', 'ksh', 'powershell', 'cmd'
-        }
 
         # Known development tools and their descriptions
         self.known_apps = {
@@ -149,16 +143,12 @@ class ProcessIdentifier:
                 if parent:
                     base_info['parent_pid'] = parent.pid
                     base_info['parent_name'] = parent.name()
-                    # Check if launched from terminal
-                    base_info['from_terminal'] = self._is_from_terminal(proc, parent)
                 else:
                     base_info['parent_pid'] = None
                     base_info['parent_name'] = None
-                    base_info['from_terminal'] = False
             except (psutil.AccessDenied, psutil.NoSuchProcess):
                 base_info['parent_pid'] = None
                 base_info['parent_name'] = None
-                base_info['from_terminal'] = False
 
             # Get enhanced description
             description = self._get_process_description(proc, cmdline)
@@ -184,30 +174,6 @@ class ProcessIdentifier:
 
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             return None
-
-    def _is_from_terminal(self, proc: psutil.Process, parent: psutil.Process) -> bool:
-        """Check if process was launched from a terminal"""
-        try:
-            # Check immediate parent
-            if parent and parent.name().lower() in self.terminals:
-                return True
-
-            # Check grandparent
-            grandparent = parent.parent() if parent else None
-            if grandparent and grandparent.name().lower() in self.terminals:
-                return True
-
-            # Check if process itself is a shell script or command
-            cmdline = proc.cmdline()
-            if cmdline and len(cmdline) > 0:
-                # Check for common shell invocations
-                if any(shell in cmdline[0].lower() for shell in ['bash', 'zsh', 'sh', 'python', 'node', 'ruby']):
-                    return True
-
-        except (psutil.AccessDenied, psutil.NoSuchProcess):
-            pass
-
-        return False
 
     def _get_process_description(self, proc: psutil.Process, cmdline: List[str]) -> Dict[str, str]:
         """Generate a user-friendly description of the process"""
@@ -262,7 +228,7 @@ class ProcessIdentifier:
                                         context = ""
                             else:
                                 context = ""
-                        except:
+                        except Exception:
                             context = ""
 
                         # Special cases with context
@@ -324,7 +290,7 @@ class ProcessIdentifier:
                                         context = ""
                                 else:
                                     context = ""
-                            except:
+                            except Exception:
                                 context = ""
 
                             # Common Python modules with better descriptions
@@ -383,7 +349,7 @@ class ProcessIdentifier:
                         context = f" ({project_name})" if project_name and project_name not in ['Users', 'home', ''] else ""
                     else:
                         context = ""
-                except:
+                except Exception:
                     context = ""
 
                 for arg in cmdline:
@@ -531,34 +497,93 @@ class ProcessIdentifier:
 
         return result
 
-    def _find_related_processes(self, main_proc_info: Dict[str, Any], all_procs: List[psutil.Process]) -> List[Dict[str, Any]]:
-        """Find processes that are related to the main process (helper processes, package managers, etc.)"""
+    def _build_process_lookup(self, all_procs: List[psutil.Process]) -> Dict[str, List[Dict]]:
+        """Pre-compute a lookup dictionary of process info keyed by working directory.
+
+        This reduces _find_related_processes from O(N*M) to O(N+M) complexity.
+        """
+        lookup = {'by_cwd': {}, 'by_parent': {}}
+
+        for proc in all_procs:
+            try:
+                pid = proc.pid
+                proc_name = proc.name().lower()
+
+                try:
+                    cmdline = proc.cmdline()
+                    cmd_str = ' '.join(cmdline).lower() if cmdline else ''
+                except (psutil.AccessDenied, psutil.NoSuchProcess):
+                    cmdline = []
+                    cmd_str = ''
+
+                try:
+                    cwd = proc.cwd()
+                except (psutil.AccessDenied, psutil.NoSuchProcess):
+                    cwd = None
+
+                try:
+                    parent = proc.parent()
+                    parent_pid = parent.pid if parent else None
+                except (psutil.AccessDenied, psutil.NoSuchProcess):
+                    parent_pid = None
+
+                proc_info = {
+                    'pid': pid,
+                    'name': proc.name(),
+                    'proc_name_lower': proc_name,
+                    'cmdline': cmdline,
+                    'cmd_str': cmd_str,
+                    'cwd': cwd,
+                    'parent_pid': parent_pid,
+                    'proc': proc
+                }
+
+                # Index by working directory
+                if cwd:
+                    if cwd not in lookup['by_cwd']:
+                        lookup['by_cwd'][cwd] = []
+                    lookup['by_cwd'][cwd].append(proc_info)
+
+                # Index by parent PID
+                if parent_pid:
+                    if parent_pid not in lookup['by_parent']:
+                        lookup['by_parent'][parent_pid] = []
+                    lookup['by_parent'][parent_pid].append(proc_info)
+
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+
+        return lookup
+
+    def _find_related_processes(self, main_proc_info: Dict[str, Any], lookup: Dict[str, List[Dict]]) -> List[Dict[str, Any]]:
+        """Find processes that are related to the main process using pre-computed lookup."""
         related = []
         main_pid = main_proc_info['pid']
         main_cwd = main_proc_info.get('cwd', '')
 
-        for proc in all_procs:
+        # Get candidates from same working directory
+        candidates = []
+        if main_cwd and main_cwd in lookup['by_cwd']:
+            candidates.extend(lookup['by_cwd'][main_cwd])
+
+        # Get child processes
+        if main_pid in lookup['by_parent']:
+            candidates.extend(lookup['by_parent'][main_pid])
+
+        # Remove duplicates based on PID
+        seen_pids = {main_pid}
+        unique_candidates = []
+        for c in candidates:
+            if c['pid'] not in seen_pids:
+                seen_pids.add(c['pid'])
+                unique_candidates.append(c)
+
+        for proc_info in unique_candidates:
             try:
-                if proc.pid == main_pid:
-                    continue
-
-                # Get basic info
-                cmdline = proc.cmdline()
-                cmd_str = ' '.join(cmdline).lower() if cmdline else ''
-                proc_name = proc.name().lower()
-
-                # Check if it's a parent/child relationship
-                parent = proc.parent()
-                is_child = parent and parent.pid == main_pid
-                is_parent = main_proc_info.get('parent_pid') == proc.pid
-
-                # Check if same working directory
-                try:
-                    proc_cwd = proc.cwd()
-                    same_cwd = main_cwd and proc_cwd == main_cwd
-                except (psutil.AccessDenied, psutil.NoSuchProcess):
-                    proc_cwd = None
-                    same_cwd = False
+                proc_name = proc_info['proc_name_lower']
+                cmd_str = proc_info['cmd_str']
+                same_cwd = main_cwd and proc_info['cwd'] == main_cwd
+                is_child = proc_info['parent_pid'] == main_pid
 
                 # Identify related process types
                 related_type = None
@@ -566,10 +591,9 @@ class ProcessIdentifier:
                 # UV package manager
                 if 'uv' in proc_name and same_cwd:
                     related_type = 'Package Manager (UV)'
-                # Virtual environment (only actual venv/virtualenv commands, not just paths)
+                # Virtual environment
                 elif (('virtualenv' in cmd_str or 'pipenv' in cmd_str) and
-                      'multiprocessing' not in cmd_str and
-                      same_cwd):
+                      'multiprocessing' not in cmd_str and same_cwd):
                     related_type = 'Virtual Environment'
                 # NPM dev scripts
                 elif 'npm' in cmd_str and ('run' in cmd_str or 'dev' in cmd_str) and same_cwd:
@@ -590,7 +614,6 @@ class ProcessIdentifier:
                     related_type = 'Auto-restart (Nodemon)'
                 # Python workers or helper processes
                 elif is_child and 'python' in proc_name:
-                    # Check if it's a worker process
                     if any(keyword in cmd_str for keyword in ['worker', 'celery', 'rq', 'huey']):
                         related_type = 'Worker Process'
                 # Gunicorn/Uvicorn workers
@@ -598,13 +621,14 @@ class ProcessIdentifier:
                     related_type = 'Web Server Worker'
 
                 if related_type:
+                    proc = proc_info['proc']
                     related.append({
-                        'pid': proc.pid,
-                        'name': proc.name(),
+                        'pid': proc_info['pid'],
+                        'name': proc_info['name'],
                         'type': related_type,
                         'cpu_percent': proc.cpu_percent(),
                         'memory_mb': proc.memory_info().rss / 1024 / 1024,
-                        'cmdline': cmdline[:3] if cmdline else []  # First 3 args for brevity
+                        'cmdline': proc_info['cmdline'][:3] if proc_info['cmdline'] else []
                     })
 
             except (psutil.NoSuchProcess, psutil.AccessDenied):
@@ -645,12 +669,15 @@ class ProcessIdentifier:
                     exe = proc.exe()
                     if exe and ('/System/' in exe or '/usr/libexec/' in exe or '/usr/sbin/' in exe):
                         continue
-                except:
+                except (psutil.AccessDenied, psutil.NoSuchProcess):
                     pass
 
                 candidate_procs.append(proc)
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
+
+        # Build lookup once for all related process searches
+        process_lookup = self._build_process_lookup(candidate_procs)
 
         # Second pass: Identify only candidate processes
         for proc in candidate_procs:
@@ -681,8 +708,8 @@ class ProcessIdentifier:
                     if app_name_lower == 'git' or 'git version control' in info['description'].lower():
                         continue
 
-                    # Find related/bundled processes
-                    info['related_processes'] = self._find_related_processes(info, candidate_procs)
+                    # Find related/bundled processes using pre-computed lookup
+                    info['related_processes'] = self._find_related_processes(info, process_lookup)
 
                     processes.append(info)
             except (psutil.NoSuchProcess, psutil.AccessDenied):
@@ -701,6 +728,9 @@ class ProcessIdentifier:
         # First pass: collect all process objects for relationship detection
         all_procs = list(psutil.process_iter())
 
+        # Build lookup once for all related process searches
+        process_lookup = self._build_process_lookup(all_procs)
+
         for proc in all_procs:
             try:
                 info = self.identify_process(proc)
@@ -711,8 +741,7 @@ class ProcessIdentifier:
                         if info['category'] == 'System' and any(known in info['name'].lower()
                                                                   for known in ['docker', 'postgres', 'mysql',
                                                                                'redis', 'mongo', 'elastic']):
-                            # Find related processes for these too
-                            info['related_processes'] = self._find_related_processes(info, all_procs)
+                            info['related_processes'] = self._find_related_processes(info, process_lookup)
                             processes.append(info)
                         continue
 
@@ -727,8 +756,8 @@ class ProcessIdentifier:
                     if app_name_lower == 'git' or 'git version control' in info['description'].lower():
                         continue
 
-                    # Find related/bundled processes
-                    info['related_processes'] = self._find_related_processes(info, all_procs)
+                    # Find related/bundled processes using pre-computed lookup
+                    info['related_processes'] = self._find_related_processes(info, process_lookup)
 
                     processes.append(info)
             except (psutil.NoSuchProcess, psutil.AccessDenied):

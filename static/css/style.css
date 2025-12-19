@@ -217,13 +217,6 @@ body {
     font-weight: 500;
 }
 
-.stat-label {
-    color: var(--terminal-cyan);
-    text-shadow: var(--glow-cyan);
-    font-weight: 700;
-    letter-spacing: 1px;
-}
-
 .stat-value {
     color: var(--terminal-text-dim);
     font-family: 'JetBrains Mono', monospace;
@@ -504,14 +497,6 @@ body {
     border: none;
     background: white;
     filter: brightness(0.95) contrast(1.05);
-}
-
-.preview-loading,
-.preview-error {
-    font-family: 'VT323', monospace;
-    font-size: 18px;
-    color: var(--terminal-text-dim);
-    letter-spacing: 2px;
 }
 
 .app-card-footer {
@@ -1104,18 +1089,3 @@ body {
     box-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
 }
 
-/* ================================================
-   UTILITY CLASSES
-   ================================================ */
-
-.text-glow {
-    text-shadow: var(--glow);
-}
-
-.text-glow-strong {
-    text-shadow: var(--glow-strong);
-}
-
-.border-glow {
-    box-shadow: 0 0 10px rgba(0, 255, 65, 0.5);
-}

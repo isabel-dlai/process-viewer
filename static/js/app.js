@@ -3,31 +3,20 @@ const socket = io();
 
 // Global variables
 let processes = [];
-let sortBy = 'cpu';
-let sortOrder = 'desc';
-let autoRefresh = true;
 
 // Preview Manager - persistent state for all app preview cards
 const previewManager = {
     // Map of card ID -> DOM element (entire card)
     cards: new Map(),
 
-    // Track current state to detect changes
-    currentGroups: [],
-
-    // Get a unique ID for a group or single app
+    // Get a unique ID for a single app
     getGroupId(group) {
-        if (group.type === 'group') {
-            return `group-${group.frontend?.pid || ''}-${group.backend?.pid || ''}`;
-        } else {
-            return `single-${group.app.pid}-${group.app.listening_ports[0]}`;
-        }
+        return `single-${group.app.pid}-${group.app.listening_ports[0]}`;
     },
 
     // Clear all cards (for complete reset)
     clear() {
         this.cards.clear();
-        this.currentGroups = [];
     }
 };
 
@@ -53,26 +42,11 @@ socket.on('process_update', (data) => {
     updateSystemInfo(data.system_info);
     renderAppPreviews();
 
-    // Log process count updates
     const activeApps = processes.filter(p => p.listening_ports && p.listening_ports.length > 0).length;
     if (activeApps > 0) {
         terminalLog(`DETECTED ${activeApps} ACTIVE PROCESS${activeApps > 1 ? 'ES' : ''} WITH PORTS`);
     }
 });
-
-// Kill functionality removed for safety
-// socket.on('process_killed', (data) => {
-//     if (data.success) {
-//         alert(`Process ${data.pid} killed successfully`);
-//         requestProcesses();
-//     } else {
-//         alert(`Failed to kill process: ${data.error}`);
-//     }
-// });
-
-// Process details modal removed
-
-// Event listeners removed - no controls needed for preview-only view
 
 // Functions
 function requestProcesses() {
@@ -345,72 +319,47 @@ function getProjectName(app) {
 
 // Update existing app card without recreating iframes
 function updateAppCard(card, group) {
-    if (group.type === 'group') {
-        // Update group card title and info (non-iframe parts only)
-        const titleElement = card.querySelector('.app-group-title');
-        if (titleElement) {
-            titleElement.textContent = group.name;
-        }
+    const app = group.app;
+    const projectName = getProjectName(app);
 
-        // Update related processes section for grouped apps
-        const allRelatedProcesses = [];
-        if (group.frontend && group.frontend.related_processes) {
-            allRelatedProcesses.push(...group.frontend.related_processes);
-        }
-        if (group.backend && group.backend.related_processes) {
-            allRelatedProcesses.push(...group.backend.related_processes);
-        }
-
-        const uniqueRelated = allRelatedProcesses.filter((proc, index, self) =>
-            index === self.findIndex(p => p.pid === proc.pid)
-        );
-
-        updateRelatedProcessesSection(card, uniqueRelated);
-        // Note: iframes remain untouched, they persist in their containers
-    } else {
-        // Update single app card
-        const app = group.app;
-        const projectName = getProjectName(app);
-
-        // Update name
-        const nameElement = card.querySelector('.app-card-name');
-        if (nameElement) {
-            nameElement.textContent = projectName;
-        }
-
-        // Update port link
-        const port = app.listening_ports[0];
-        const url = `http://localhost:${port}`;
-        const portLink = card.querySelector('.app-card-port');
-        if (portLink) {
-            portLink.href = url;
-            portLink.textContent = `:${port}`;
-        }
-
-        // Update description
-        const desc = card.querySelector('.app-card-info span:not(.app-card-type)');
-        if (desc) {
-            desc.textContent = app.description;
-        }
-
-        // Update type
-        const typeElement = card.querySelector('.app-card-type');
-        if (typeElement) {
-            typeElement.className = `app-card-type type-${group.appType}`;
-            typeElement.textContent = group.appType;
-        }
-
-        // Update footer links
-        const openBtn = card.querySelector('.app-action.primary');
-        if (openBtn) {
-            openBtn.href = url;
-        }
-
-        // Update related processes section
-        updateRelatedProcessesSection(card, app.related_processes);
-
-        // Note: iframe is not touched - it remains in the preview container
+    // Update name
+    const nameElement = card.querySelector('.app-card-name');
+    if (nameElement) {
+        nameElement.textContent = projectName;
     }
+
+    // Update port link
+    const port = app.listening_ports[0];
+    const url = `http://localhost:${port}`;
+    const portLink = card.querySelector('.app-card-port');
+    if (portLink) {
+        portLink.href = url;
+        portLink.textContent = `:${port}`;
+    }
+
+    // Update description
+    const desc = card.querySelector('.app-card-info span:not(.app-card-type)');
+    if (desc) {
+        desc.textContent = app.description;
+    }
+
+    // Update type
+    const typeElement = card.querySelector('.app-card-type');
+    if (typeElement) {
+        typeElement.className = `app-card-type type-${group.appType}`;
+        typeElement.textContent = group.appType;
+    }
+
+    // Update footer links
+    const openBtn = card.querySelector('.app-action.primary');
+    if (openBtn) {
+        openBtn.href = url;
+    }
+
+    // Update related processes section
+    updateRelatedProcessesSection(card, app.related_processes);
+
+    // Note: iframe is not touched - it remains in the preview container
 }
 
 // Update or create related processes section in a card
@@ -437,248 +386,52 @@ function updateRelatedProcessesSection(card, relatedProcesses) {
     }
 }
 
+// Create iframe preview element with overlay
+function createIframePreview(url, previewKey) {
+    const preview = document.createElement('div');
+    preview.className = 'app-card-preview';
+    preview.setAttribute('data-preview-key', previewKey);
+    preview.style.cssText = 'overflow:hidden;position:relative;height:300px;width:100%;background:#000';
+
+    const iframe = document.createElement('iframe');
+    iframe.className = 'app-iframe';
+    iframe.src = url;
+    iframe.sandbox = 'allow-same-origin allow-scripts allow-forms';
+    iframe.style.cssText = 'width:1280px;height:800px;border:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) scale(0.38);transform-origin:center center;pointer-events:none';
+
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;cursor:pointer;z-index:10';
+    overlay.onclick = () => window.open(url, '_blank');
+
+    preview.appendChild(iframe);
+    preview.appendChild(overlay);
+    return preview;
+}
+
 // Create app preview card
 function createAppCard(group) {
     const card = document.createElement('div');
+    card.className = 'app-card';
 
-    if (group.type === 'group') {
-        // Create grouped app card with toggle
-        card.className = 'app-group';
-
-        // Create unique ID for this group
-        const groupId = `group-${group.frontend?.pid || ''}-${group.backend?.pid || ''}`;
-        card.setAttribute('data-group-id', groupId);
-
-        // Header with toggle buttons
-        const header = document.createElement('div');
-        header.className = 'app-group-header';
-
-        const headerTitle = document.createElement('span');
-        headerTitle.className = 'app-group-title';
-        headerTitle.textContent = group.name;
-
-        const toggleButtons = document.createElement('div');
-        toggleButtons.className = 'app-toggle-buttons';
-
-        if (group.frontend && group.backend) {
-            const frontendBtn = document.createElement('button');
-            frontendBtn.className = 'toggle-btn active';
-            frontendBtn.textContent = 'Frontend';
-            frontendBtn.setAttribute('data-view', 'frontend');
-
-            const backendBtn = document.createElement('button');
-            backendBtn.className = 'toggle-btn';
-            backendBtn.textContent = 'Backend';
-            backendBtn.setAttribute('data-view', 'backend');
-
-            frontendBtn.onclick = () => toggleView(groupId, 'frontend');
-            backendBtn.onclick = () => toggleView(groupId, 'backend');
-
-            toggleButtons.appendChild(frontendBtn);
-            toggleButtons.appendChild(backendBtn);
-        }
-
-        header.appendChild(headerTitle);
-        header.appendChild(toggleButtons);
-        card.appendChild(header);
-
-        // Content area with both views
-        const content = document.createElement('div');
-        content.className = 'app-group-content';
-
-        if (group.frontend) {
-            const frontendView = createSingleAppElement(group.frontend, 'Frontend', groupId);
-            frontendView.classList.add('app-view', 'active');
-            frontendView.setAttribute('data-view-type', 'frontend');
-            content.appendChild(frontendView);
-        }
-
-        if (group.backend) {
-            const backendView = createSingleAppElement(group.backend, 'Backend', groupId);
-            backendView.classList.add('app-view');
-            if (!group.frontend) backendView.classList.add('active');
-            backendView.setAttribute('data-view-type', 'backend');
-            backendView.style.display = group.frontend ? 'none' : 'block';
-            content.appendChild(backendView);
-        }
-
-        card.appendChild(content);
-
-        // Add related processes section for grouped apps
-        // Combine related processes from both frontend and backend
-        const allRelatedProcesses = [];
-        if (group.frontend && group.frontend.related_processes) {
-            allRelatedProcesses.push(...group.frontend.related_processes);
-        }
-        if (group.backend && group.backend.related_processes) {
-            allRelatedProcesses.push(...group.backend.related_processes);
-        }
-
-        // Remove duplicates based on PID
-        const uniqueRelated = allRelatedProcesses.filter((proc, index, self) =>
-            index === self.findIndex(p => p.pid === proc.pid)
-        );
-
-        const relatedSection = createRelatedProcessesSection(uniqueRelated);
-        if (relatedSection) {
-            card.appendChild(relatedSection);
-        }
-    } else {
-        // Create single app card
-        card.className = 'app-card';
-
-        const app = group.app;
-        const port = app.listening_ports[0];
-        const url = `http://localhost:${port}`;
-        const projectName = getProjectName(app);
-        const groupId = previewManager.getGroupId(group);
-        const previewKey = `${groupId}-iframe`;
-
-        // Set unique identifier for reconciliation
-        card.setAttribute('data-group-id', groupId);
-
-        // Header
-        const header = document.createElement('div');
-        header.className = 'app-card-header';
-
-        const title = document.createElement('div');
-        title.className = 'app-card-title';
-
-        const name = document.createElement('span');
-        name.className = 'app-card-name';
-        name.textContent = projectName;
-
-        const portLink = document.createElement('a');
-        portLink.className = 'app-card-port';
-        portLink.href = url;
-        portLink.target = '_blank';
-        portLink.textContent = `:${port}`;
-
-        title.appendChild(name);
-        title.appendChild(portLink);
-        header.appendChild(title);
-
-        const info = document.createElement('div');
-        info.className = 'app-card-info';
-
-        const type = document.createElement('span');
-        type.className = `app-card-type type-${group.appType}`;
-        type.textContent = group.appType;
-
-        const desc = document.createElement('span');
-        desc.textContent = app.description;
-
-        info.appendChild(type);
-        info.appendChild(desc);
-        header.appendChild(info);
-
-        // Preview - iframe scaled to fill width
-        const preview = document.createElement('div');
-        preview.className = 'app-card-preview';
-        preview.setAttribute('data-preview-key', previewKey);
-        preview.style.overflow = 'hidden';
-        preview.style.position = 'relative';
-        preview.style.height = '300px';
-        preview.style.width = '100%';
-        preview.style.backgroundColor = '#000';
-
-        // Create iframe - scale to fill container width
-        const iframe = document.createElement('iframe');
-        iframe.className = 'app-iframe';
-        iframe.src = url;
-        iframe.sandbox = 'allow-same-origin allow-scripts allow-forms';
-
-        // Set iframe to desktop size, then scale to fit width
-        iframe.style.width = '1280px';
-        iframe.style.height = '800px';
-        iframe.style.border = 'none';
-        iframe.style.position = 'absolute';
-        iframe.style.top = '50%';
-        iframe.style.left = '50%';
-
-        // Scale to fill container width (height will overflow and be cropped)
-        // Container is typically 450-500px wide
-        // Scale = container width / 1280
-        // Use CSS to scale: transform with calc
-        iframe.style.transform = 'translate(-50%, -50%) scale(0.38)'; // ~480px / 1280px
-        iframe.style.transformOrigin = 'center center';
-
-        // Make it clickable to open in new tab
-        iframe.style.pointerEvents = 'none';
-        const overlay = document.createElement('div');
-        overlay.style.position = 'absolute';
-        overlay.style.top = '0';
-        overlay.style.left = '0';
-        overlay.style.width = '100%';
-        overlay.style.height = '100%';
-        overlay.style.cursor = 'pointer';
-        overlay.style.zIndex = '10';
-        overlay.onclick = () => window.open(url, '_blank');
-
-        preview.appendChild(iframe);
-        preview.appendChild(overlay);
-
-        // Footer with actions
-        const footer = document.createElement('div');
-        footer.className = 'app-card-footer';
-
-        const openBtn = document.createElement('a');
-        openBtn.className = 'app-action primary';
-        openBtn.href = url;
-        openBtn.target = '_blank';
-        openBtn.textContent = 'Open in Browser';
-
-        const killBtn = document.createElement('button');
-        killBtn.className = 'app-action';
-        killBtn.textContent = 'Kill Process';
-        killBtn.style.borderColor = 'var(--terminal-red)';
-        killBtn.style.color = 'var(--terminal-red)';
-        killBtn.onclick = () => {
-            // Set confirmation callback
-            confirmCallback = () => {
-                killProcessGroup(projectName, app.pid, app.related_processes, app.cwd);
-            };
-            // Show confirmation modal
-            showConfirmModal(projectName, app, app.related_processes);
-        };
-
-        footer.appendChild(openBtn);
-        footer.appendChild(killBtn);
-
-        card.appendChild(header);
-        card.appendChild(preview);
-        card.appendChild(footer);
-
-        // Add related processes section if available
-        const relatedSection = createRelatedProcessesSection(app.related_processes);
-        if (relatedSection) {
-            card.appendChild(relatedSection);
-        }
-    }
-
-    return card;
-}
-
-// Create single app element for grouped view
-function createSingleAppElement(app, label, groupId) {
-    const element = document.createElement('div');
-    element.className = 'app-group-item';
-
+    const app = group.app;
     const port = app.listening_ports[0];
     const url = `http://localhost:${port}`;
-    const previewKey = `${groupId}-iframe-${label.toLowerCase()}`;
+    const projectName = getProjectName(app);
+    const groupId = previewManager.getGroupId(group);
 
-    // Info
-    const info = document.createElement('div');
-    info.className = 'app-card-header';
+    // Set unique identifier for reconciliation
+    card.setAttribute('data-group-id', groupId);
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'app-card-header';
 
     const title = document.createElement('div');
     title.className = 'app-card-title';
 
     const name = document.createElement('span');
     name.className = 'app-card-name';
-    name.style.fontSize = '14px';
-    name.textContent = `${label}: ${app.app_name}`;
+    name.textContent = projectName;
 
     const portLink = document.createElement('a');
     portLink.className = 'app-card-port';
@@ -688,83 +441,61 @@ function createSingleAppElement(app, label, groupId) {
 
     title.appendChild(name);
     title.appendChild(portLink);
-    info.appendChild(title);
+    header.appendChild(title);
+
+    const info = document.createElement('div');
+    info.className = 'app-card-info';
+
+    const type = document.createElement('span');
+    type.className = `app-card-type type-${group.appType}`;
+    type.textContent = group.appType;
+
+    const desc = document.createElement('span');
+    desc.textContent = app.description;
+
+    info.appendChild(type);
+    info.appendChild(desc);
+    header.appendChild(info);
 
     // Preview - iframe scaled to fill width
-    const preview = document.createElement('div');
-    preview.className = 'app-card-preview';
-    preview.setAttribute('data-preview-key', previewKey);
-    preview.style.overflow = 'hidden';
-    preview.style.position = 'relative';
-    preview.style.height = '300px';
-    preview.style.width = '100%';
-    preview.style.backgroundColor = '#000';
+    const preview = createIframePreview(url, `${groupId}-iframe`);
 
-    // Create iframe - scale to fill container width
-    const iframe = document.createElement('iframe');
-    iframe.className = 'app-iframe';
-    iframe.src = url;
-    iframe.sandbox = 'allow-same-origin allow-scripts allow-forms';
+    // Footer with actions
+    const footer = document.createElement('div');
+    footer.className = 'app-card-footer';
 
-    // Set iframe to desktop size, then scale to fit width
-    iframe.style.width = '1280px';
-    iframe.style.height = '800px';
-    iframe.style.border = 'none';
-    iframe.style.position = 'absolute';
-    iframe.style.top = '50%';
-    iframe.style.left = '50%';
+    const openBtn = document.createElement('a');
+    openBtn.className = 'app-action primary';
+    openBtn.href = url;
+    openBtn.target = '_blank';
+    openBtn.textContent = 'Open in Browser';
 
-    // Scale to fill container width (height will overflow and be cropped)
-    iframe.style.transform = 'translate(-50%, -50%) scale(0.38)'; // ~480px / 1280px
-    iframe.style.transformOrigin = 'center center';
+    const killBtn = document.createElement('button');
+    killBtn.className = 'app-action';
+    killBtn.textContent = 'Kill Process';
+    killBtn.style.borderColor = 'var(--terminal-red)';
+    killBtn.style.color = 'var(--terminal-red)';
+    killBtn.onclick = () => {
+        confirmCallback = () => {
+            killProcessGroup(projectName, app.pid, app.related_processes, app.cwd);
+        };
+        showConfirmModal(projectName, app, app.related_processes);
+    };
 
-    // Make it clickable to open in new tab
-    iframe.style.pointerEvents = 'none';
-    const overlay = document.createElement('div');
-    overlay.style.position = 'absolute';
-    overlay.style.top = '0';
-    overlay.style.left = '0';
-    overlay.style.width = '100%';
-    overlay.style.height = '100%';
-    overlay.style.cursor = 'pointer';
-    overlay.style.zIndex = '10';
-    overlay.onclick = () => window.open(url, '_blank');
+    footer.appendChild(openBtn);
+    footer.appendChild(killBtn);
 
-    preview.appendChild(iframe);
-    preview.appendChild(overlay);
+    card.appendChild(header);
+    card.appendChild(preview);
+    card.appendChild(footer);
 
-    element.appendChild(info);
-    element.appendChild(preview);
+    // Add related processes section if available
+    const relatedSection = createRelatedProcessesSection(app.related_processes);
+    if (relatedSection) {
+        card.appendChild(relatedSection);
+    }
 
-    return element;
-}
-
-// Toggle view function for frontend/backend switching
-function toggleView(groupId, view) {
-    const card = document.querySelector(`[data-group-id="${groupId}"]`);
-    if (!card) return;
-
-    // Update button states
-    const buttons = card.querySelectorAll('.toggle-btn');
-    buttons.forEach(btn => {
-        if (btn.getAttribute('data-view') === view) {
-            btn.classList.add('active');
-        } else {
-            btn.classList.remove('active');
-        }
-    });
-
-    // Show/hide appropriate views
-    const views = card.querySelectorAll('.app-view');
-    views.forEach(viewEl => {
-        if (viewEl.getAttribute('data-view-type') === view) {
-            viewEl.style.display = 'block';
-            viewEl.classList.add('active');
-        } else {
-            viewEl.style.display = 'none';
-            viewEl.classList.remove('active');
-        }
-    });
+    return card;
 }
 
 // Create related processes section
@@ -867,49 +598,8 @@ function updateSystemInfo(systemInfo) {
     }
 }
 
-// Table rendering functions removed - preview-only view
-
-// Kill functionality removed for safety
-// function killProcess(pid) {
-//     if (confirm(`Are you sure you want to kill process ${pid}?`)) {
-//         socket.emit('kill_process', { pid: pid });
-//     }
-// }
-
-function escapeHtml(unsafe) {
-    return unsafe
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-}
-
 // Auto-refresh every 2 seconds
-setInterval(() => {
-    if (autoRefresh) {
-        requestProcesses();
-    }
-}, 2000);
-
-// Terminal boot sequence
-function bootSequence() {
-    terminalLog('PROCESS_VIEWER.EXE v2.1.0 - INITIALIZING...', 'info');
-    terminalLog('LOADING SYSTEM MODULES...', 'info');
-
-    setTimeout(() => {
-        terminalLog('ESTABLISHING WEBSOCKET CONNECTION...', 'info');
-    }, 300);
-
-    setTimeout(() => {
-        terminalLog('SYSTEM READY - MONITORING ACTIVE', 'info');
-    }, 600);
-}
-
-// Run boot sequence on page load
-document.addEventListener('DOMContentLoaded', () => {
-    bootSequence();
-});
+setInterval(requestProcesses, 2000);
 
 // Initial load
 requestProcesses();

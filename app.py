@@ -1,15 +1,12 @@
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
-from process_monitor import ProcessMonitor
 from process_identifier import ProcessIdentifier
 import psutil
-import json
 
 app = Flask(__name__)
 CORS(app)
 socketio = SocketIO(app, cors_allowed_origins="*")
-monitor = ProcessMonitor()
 identifier = ProcessIdentifier()
 
 
@@ -17,62 +14,6 @@ identifier = ProcessIdentifier()
 def index():
     """Serve the main interface"""
     return render_template('index.html')
-
-
-@app.route('/api/processes')
-def get_processes():
-    """Get all development processes"""
-    try:
-        processes = monitor.get_dev_processes()
-        return jsonify({'success': True, 'processes': processes})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/api/process/<int:pid>', methods=['DELETE'])
-def kill_process(pid):
-    """Kill a process by PID"""
-    try:
-        result = monitor.kill_process(pid)
-        if result['success']:
-            return jsonify(result)
-        else:
-            return jsonify(result), 400
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/api/process/<int:pid>')
-def get_process(pid):
-    """Get details for a specific process"""
-    try:
-        import psutil
-        proc = psutil.Process(pid)
-        info = monitor.get_process_info(proc)
-        if info:
-            return jsonify({'success': True, 'process': info})
-        else:
-            return jsonify({'success': False, 'error': 'Process not found'}), 404
-    except psutil.NoSuchProcess:
-        return jsonify({'success': False, 'error': 'Process not found'}), 404
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-def get_all_processes():
-    """Get all system processes with basic info"""
-    processes = []
-    for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent',
-                                     'status', 'username', 'num_threads']):
-        try:
-            info = proc.info
-            # Get memory in MB
-            memory_info = proc.memory_info()
-            info['memory_mb'] = memory_info.rss / 1024 / 1024
-            processes.append(info)
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            continue
-    return processes
 
 
 @socketio.on('connect')
