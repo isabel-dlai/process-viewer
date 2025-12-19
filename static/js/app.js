@@ -754,12 +754,14 @@ socket.on('process_group_killed', (data) => {
 const themeConfig = {
     hacker: {
         name: 'Hacker',
-        title: 'PROCESS_VIEWER.EXE',
+        title: 'WHATS_RUNNING.EXE',
+        tabTitle: "What's Running?",
         footer: '// MONITORING ACTIVE // PID_SCANNER v2.1.0 //'
     },
     clean: {
         name: 'Clean',
-        title: 'Process Viewer',
+        title: "What's running on my local machine?",
+        tabTitle: "What's Running?",
         footer: 'Monitoring your development environment'
     }
 };
@@ -802,8 +804,8 @@ function initTheme() {
         }
         if (footerText) footerText.textContent = config.footer;
 
-        // Update document title
-        document.title = config.title;
+        // Update document title (tab)
+        document.title = config.tabTitle;
     }
 }
 
