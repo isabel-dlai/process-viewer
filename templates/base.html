@@ -14,6 +14,24 @@
     <div class="crt-overlay"></div>
     <div class="scanlines"></div>
 
+    <!-- Toast Container -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <!-- Confirmation Modal -->
+    <div class="confirm-modal" id="confirm-modal">
+        <div class="confirm-content">
+            <div class="confirm-title" id="confirm-title">⚠ TERMINATE PROCESS?</div>
+            <div class="confirm-message" id="confirm-message">
+                This will kill the following processes:
+            </div>
+            <div class="confirm-process-list" id="confirm-process-list"></div>
+            <div class="confirm-buttons">
+                <button class="confirm-btn confirm-btn-cancel" id="confirm-cancel">Cancel</button>
+                <button class="confirm-btn confirm-btn-kill" id="confirm-kill">Kill All</button>
+            </div>
+        </div>
+    </div>
+
     <nav class="navbar">
         <div class="container">
             <div class="terminal-header">
@@ -23,7 +41,6 @@
                 <span class="blink-cursor">_</span>
             </div>
             <div class="system-info">
-                <span class="stat-label">SYS:</span>
                 <span id="cpu-usage" class="stat-value">CPU: <span class="metric">--</span>%</span>
                 <span class="separator">|</span>
                 <span id="memory-usage" class="stat-value">MEM: <span class="metric">--</span>%</span>

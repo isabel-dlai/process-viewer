@@ -566,8 +566,10 @@ class ProcessIdentifier:
                 # UV package manager
                 if 'uv' in proc_name and same_cwd:
                     related_type = 'Package Manager (UV)'
-                # Virtual environment
-                elif ('.venv' in cmd_str or 'virtualenv' in cmd_str or 'pipenv' in cmd_str) and same_cwd:
+                # Virtual environment (only actual venv/virtualenv commands, not just paths)
+                elif (('virtualenv' in cmd_str or 'pipenv' in cmd_str) and
+                      'multiprocessing' not in cmd_str and
+                      same_cwd):
                     related_type = 'Virtual Environment'
                 # NPM dev scripts
                 elif 'npm' in cmd_str and ('run' in cmd_str or 'dev' in cmd_str) and same_cwd:

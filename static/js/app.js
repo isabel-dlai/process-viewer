@@ -628,13 +628,22 @@ function createAppCard(group) {
         openBtn.target = '_blank';
         openBtn.textContent = 'Open in Browser';
 
-        const detailsBtn = document.createElement('button');
-        detailsBtn.className = 'app-action';
-        detailsBtn.textContent = 'Process Details';
-        detailsBtn.onclick = () => getProcessDetails(app.pid);
+        const killBtn = document.createElement('button');
+        killBtn.className = 'app-action';
+        killBtn.textContent = 'Kill Process';
+        killBtn.style.borderColor = 'var(--terminal-red)';
+        killBtn.style.color = 'var(--terminal-red)';
+        killBtn.onclick = () => {
+            // Set confirmation callback
+            confirmCallback = () => {
+                killProcessGroup(projectName, app.pid, app.related_processes, app.cwd);
+            };
+            // Show confirmation modal
+            showConfirmModal(projectName, app, app.related_processes);
+        };
 
         footer.appendChild(openBtn);
-        footer.appendChild(detailsBtn);
+        footer.appendChild(killBtn);
 
         card.appendChild(header);
         card.appendChild(preview);
@@ -904,3 +913,146 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Initial load
 requestProcesses();
+
+// ================================================
+// KILL PROCESS FUNCTIONALITY
+// ================================================
+
+// Toast notification system
+function showToast(title, message, type = 'success', options = {}) {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+
+    const titleEl = document.createElement('div');
+    titleEl.className = 'toast-title';
+    titleEl.textContent = title;
+
+    const messageEl = document.createElement('div');
+    messageEl.className = 'toast-message';
+    messageEl.textContent = message;
+
+    toast.appendChild(titleEl);
+    toast.appendChild(messageEl);
+
+    // Add restart button if provided
+    if (options.showRestart && options.restartCommand) {
+        const restartBtn = document.createElement('button');
+        restartBtn.className = 'toast-restart';
+        restartBtn.textContent = '↻ Show Restart Command';
+        restartBtn.onclick = () => {
+            terminalLog(`TO RESTART: ${options.restartCommand}`, 'info');
+            alert(`Restart command:\n\n${options.restartCommand}\n\nCheck console for details.`);
+        };
+        toast.appendChild(restartBtn);
+    }
+
+    container.appendChild(toast);
+
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(400px)';
+        setTimeout(() => toast.remove(), 300);
+    }, 5000);
+}
+
+// Confirmation modal
+let confirmCallback = null;
+
+function showConfirmModal(appName, mainProcess, relatedProcesses) {
+    const modal = document.getElementById('confirm-modal');
+    const processList = document.getElementById('confirm-process-list');
+
+    // Build process list
+    let listHTML = `<div class="confirm-process-item">
+        <span class="process-type">MAIN:</span> ${appName} (PID: ${mainProcess.pid})
+    </div>`;
+
+    if (relatedProcesses && relatedProcesses.length > 0) {
+        relatedProcesses.forEach(proc => {
+            listHTML += `<div class="confirm-process-item">
+                <span class="process-type">${proc.type}:</span> ${proc.name} (PID: ${proc.pid})
+            </div>`;
+        });
+    }
+
+    processList.innerHTML = listHTML;
+
+    // Update title
+    const totalCount = 1 + (relatedProcesses ? relatedProcesses.length : 0);
+    document.getElementById('confirm-title').textContent =
+        `⚠ KILL ${totalCount} PROCESS${totalCount > 1 ? 'ES' : ''}?`;
+
+    // Show modal
+    modal.classList.add('active');
+
+    terminalLog(`CONFIRMATION REQUIRED: Kill ${appName} and ${relatedProcesses?.length || 0} related processes`, 'warn');
+}
+
+function hideConfirmModal() {
+    const modal = document.getElementById('confirm-modal');
+    modal.classList.remove('active');
+    confirmCallback = null;
+}
+
+// Modal event listeners
+document.getElementById('confirm-cancel').addEventListener('click', () => {
+    terminalLog('PROCESS TERMINATION CANCELLED', 'info');
+    hideConfirmModal();
+});
+
+document.getElementById('confirm-kill').addEventListener('click', () => {
+    if (confirmCallback) {
+        confirmCallback();
+    }
+    hideConfirmModal();
+});
+
+// Close modal on background click
+document.getElementById('confirm-modal').addEventListener('click', (e) => {
+    if (e.target.id === 'confirm-modal') {
+        hideConfirmModal();
+    }
+});
+
+// Kill process group function
+function killProcessGroup(appName, mainPid, relatedProcesses, cwd) {
+    const relatedPids = relatedProcesses ? relatedProcesses.map(p => p.pid) : [];
+
+    terminalLog(`TERMINATING ${appName} (PID: ${mainPid}) and ${relatedPids.length} related processes...`, 'warn');
+
+    socket.emit('kill_process_group', {
+        pid: mainPid,
+        related_pids: relatedPids
+    });
+}
+
+// Socket listener for kill response
+socket.on('process_group_killed', (data) => {
+    if (data.success) {
+        terminalLog(`SUCCESSFULLY KILLED ${data.total_killed} PROCESSES`, 'info');
+
+        const message = `Terminated ${data.total_killed} process${data.total_killed > 1 ? 'es' : ''}`;
+
+        showToast(
+            '✓ PROCESSES KILLED',
+            message,
+            'success',
+            {
+                showRestart: true,
+                restartCommand: 'Check working directory and restart manually'
+            }
+        );
+
+        // Refresh process list
+        setTimeout(() => requestProcesses(), 1000);
+    } else {
+        terminalLog(`FAILED TO KILL PROCESS: ${data.error}`, 'error');
+        showToast(
+            '✗ KILL FAILED',
+            data.error || 'Failed to terminate processes',
+            'error'
+        );
+    }
+});

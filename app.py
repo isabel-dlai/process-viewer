@@ -129,6 +129,78 @@ def handle_kill_process(data):
         emit('process_killed', {'success': False, 'error': str(e), 'pid': pid})
 
 
+@socketio.on('kill_process_group')
+def handle_kill_process_group(data):
+    """Kill a process and all its related processes"""
+    try:
+        import time
+
+        main_pid = data.get('pid')
+        related_pids = data.get('related_pids', [])
+
+        killed_pids = []
+        failed_pids = []
+
+        # Kill related processes first (children, bundled processes)
+        for pid in related_pids:
+            try:
+                proc = psutil.Process(pid)
+                proc.terminate()
+                killed_pids.append(pid)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                failed_pids.append(pid)
+
+        # Give processes a moment to terminate gracefully
+        time.sleep(0.5)
+
+        # Force kill any that didn't terminate
+        for pid in killed_pids[:]:
+            try:
+                proc = psutil.Process(pid)
+                if proc.is_running():
+                    proc.kill()
+            except psutil.NoSuchProcess:
+                pass  # Already dead, that's fine
+
+        # Kill main process last
+        try:
+            main_proc = psutil.Process(main_pid)
+            main_proc.terminate()
+            time.sleep(0.5)
+            if main_proc.is_running():
+                main_proc.kill()
+            killed_pids.insert(0, main_pid)
+        except psutil.NoSuchProcess:
+            emit('process_killed', {
+                'success': False,
+                'error': 'Main process not found',
+                'pid': main_pid
+            })
+            return
+        except psutil.AccessDenied:
+            emit('process_killed', {
+                'success': False,
+                'error': 'Access denied',
+                'pid': main_pid
+            })
+            return
+
+        emit('process_group_killed', {
+            'success': True,
+            'main_pid': main_pid,
+            'killed_pids': killed_pids,
+            'failed_pids': failed_pids,
+            'total_killed': len(killed_pids)
+        })
+
+    except Exception as e:
+        emit('process_group_killed', {
+            'success': False,
+            'error': str(e),
+            'pid': main_pid
+        })
+
+
 @socketio.on('get_process_details')
 def handle_get_process_details(data):
     """Get detailed info for a specific process"""
